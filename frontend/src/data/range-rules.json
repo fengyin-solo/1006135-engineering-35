@@ -1,0 +1,13 @@
+{
+  "building": {
+    "距隧道距离": { "min": 0, "max": 50, "unit": "m" },
+    "允许沉降": { "min": 0, "max": 100, "unit": "mm" },
+    "实测沉降": { "min": -50, "max": 100, "unit": "mm" }
+  },
+  "settlement": {
+    "初始高程": { "min": -100, "max": 1000, "unit": "m" },
+    "累计沉降": { "min": -50, "max": 100, "unit": "mm" },
+    "沉降速率": { "min": 0, "max": 20, "unit": "mm/d" },
+    "预警阈值": { "min": 0, "max": 100, "unit": "mm" }
+  }
+}

@@ -38,6 +38,44 @@ cd frontend
 npm run build
 ```
 
+依赖与样例的工程约定：
+
+- **版本清单只有一份**：`frontend/package-lock.json` 钉死全部版本，本地与镜像都用
+  `npm ci` 照它取，不再用 `npm install` 浮动解析；镜像基础镜像也钉到具体版本。
+- **缓存目录按提交重建**：镜像构建时 `GIT_SHA`（compose/CI 传入）决定 npm 缓存作用域，
+  每个提交一套独立缓存，互不污染。
+- **样例唯一真源**是 `frontend/src/data/seed.json`，构建会通过 `?url` 把它原样发进
+  发布制品（`dist/assets/seed-*.json`），不会再出现制品里没有样例、页面空白。
+- `npm run check:seed` 在构建前校验样例：范围越限、建筑监测/地表沉降条数不同源直接失败。
+- 测试（幂等准备、断点续跑、存量回填、写库回滚、页面渲染冒烟）：`npm test`。
+
+容器：
+
+```bash
+make image   # GIT_SHA 取当前提交短哈希
+make up      # http://127.0.0.1:5173/ （容器内 nginx 提供静态制品）
+```
+
+## 建筑监测的样例准备与恢复
+
+建筑监测页有两个入口（两条读的是同一套 `seed.json` 样例）：
+
+- **准备样例**：把建筑监测样例灌进本地数据。
+  - 幂等：同一「对象编号」重复执行只 upsert 一次，重复递两条只记一条，不会翻倍；
+  - 可续跑：每成功一条推进一格水位（`…:prepare:building`），跑到一半停了下次接着跑；
+  - 存量记录按创建时间排队，缺字段的照对应样例补上，整块不丢弃；
+  - 范围校验（`src/data/range-rules.json`，准备阶段与构建期共享）发现越限记录，
+    在准备阶段就报出来，一条不过就不写库；
+  - 旧字段名（如「距隧道净距」）与字符串/数字混用的 id 在读取、写入两端统一归一化。
+- **恢复初始状态**：建筑监测与它同源的地表沉降测点一起回到初始样例。
+
+**建筑监测 ↔ 地表沉降同源**：沉降清单里的建筑物测点由建筑监测清单推导（测点编号
+`SETT-<对象编号>`），准备结果会反映到沉降清单，两处条数始终相等；关联不上建筑的存量
+测点作为孤立记录保留。两个页面的卡片数字都走 `src/data/stats.ts` 同一个统计实现。
+
+写库（localStorage）失败时就地撤销内存改动，不产生「界面改了、库里没改」的半截状态。
+
+
 ## 业务模块
 
 | 模块 | 目录 | 业务对象 | 主要字段 |
@@ -65,7 +103,8 @@ npm run build
 
 - 每个模块的页面在 `frontend/src/views/<模块>/index.vue`，页面只负责渲染，读写统一走
   `frontend/src/api/local-service.ts`。
-- 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
-  `frontend/src/data/seed.ts`。
+- 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；样例唯一真源在
+  `frontend/src/data/seed.json`（`seed.ts` 只负责导入与发布）。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `shield-tunnel-construction:entries` 这一项，或调用 `resetModule(模块)`。
+- 想回到初始数据：在建筑监测页点「恢复初始状态」，调用 `resetBuilding()`，或对其它模块
+  调用 `resetModule(模块)`；也可以清掉浏览器里 `shield-tunnel-construction:entries`。

@@ -3,10 +3,9 @@
     <header class="page-head">
       <div>
         <h2>地表沉降管理</h2>
-        <p class="page-desc">维护沉降测点，围绕测点编号、测点位置、初始高程、累计沉降做登记、筛选与状态流转。</p>
+        <p class="page-desc">维护沉降测点，围绕测点编号、测点位置、初始高程、累计沉降做登记、筛选与状态流转。建筑物测点与建筑监测清单同源。</p>
       </div>
       <div class="page-actions">
-        <button class="btn primary" type="button" @click="openCreate">登记沉降测点</button>
         <button class="btn" type="button" @click="exportRows">导出地表沉降清单</button>
       </div>
     </header>
@@ -22,6 +21,7 @@
       <span v-for="item in statusSummary" :key="item.status" class="legend-item">
         {{ item.status }}：{{ item.count }}
       </span>
+      <span class="legend-item">建筑监测同源条数：{{ linkedCount }}</span>
     </p>
 
     <form class="filter-bar" @submit.prevent="reload">
@@ -58,13 +58,13 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无地表沉降数据，可先登记沉降测点</td>
+          <td :colspan="columns.length + 2" class="empty-state">暂无地表沉降数据，可先在建筑监测页点「准备样例」</td>
         </tr>
       </tbody>
     </table>
 
     <footer class="page-foot">
-      <span>共 {{ total }} 条地表沉降记录</span>
+      <span>共 {{ total }} 条地表沉降记录，其中 {{ linkedCount }} 条与建筑监测同源</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -74,21 +74,25 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  buildingSettlementSync,
   downloadEntries,
   listEntries,
+  moduleCards,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import type { StatCard } from '@/data/stats'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('settlement')
-const columns = ["测点编号", "测点位置", "初始高程", "累计沉降", "沉降速率", "预警阈值", "监测日期", "测点状态"]
-const actions = ["提交监测", "发布预警", "确认稳定"]
-const statuses = ["正常", "预警", "报警", "已稳定"]
-const stats = [{"label": "正常测点", "value": 0}, {"label": "预警测点", "value": 0}, {"label": "最大累计沉降", "value": 0}]
+const columns = meta.fields
+const actions = meta.actions
+const statuses = meta.statuses
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
+const linkedCount = ref(0)
+const stats = ref<StatCard[]>([])
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
@@ -108,10 +112,6 @@ function exportRows() {
   downloadEntries(meta.key)
 }
 
-function openCreate() {
-  errorMessage.value = '沉降测点登记入口尚未接入审批流'
-}
-
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
@@ -128,6 +128,9 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    // 卡片数字与建筑监测走同一个统计实现、同一份清单，不分两份。
+    stats.value = moduleCards(meta.key)
+    linkedCount.value = buildingSettlementSync().linked
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '地表沉降列表读取失败'
   }

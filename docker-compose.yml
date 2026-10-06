@@ -1,5 +1,11 @@
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 缓存目录按提交重建：每个 git 提交拿到独立的依赖缓存作用域。
+        GIT_SHA: ${GIT_SHA:-working}
+    image: shield-tunnel-frontend:${GIT_SHA:-working}
     ports:
-      - "5173:5173"
+      - "5173:80"
+    restart: unless-stopped
