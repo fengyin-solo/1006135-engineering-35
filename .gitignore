@@ -85,3 +85,6 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# 准备/恢复脚本的进度（journal）按工作区走，不入库；制品样例 public/data 入库
+frontend/.data/

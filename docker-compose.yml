@@ -1,5 +1,9 @@
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 提交号透传进镜像：缓存目录与样例清单随提交重建，默认值兜底本地直接构建。
+        COMMIT_SHA: ${COMMIT_SHA:-local}
     ports:
-      - "5173:5173"
+      - "5173:80"

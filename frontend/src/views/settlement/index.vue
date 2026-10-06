@@ -77,6 +77,7 @@ import {
   downloadEntries,
   listEntries,
   moduleMeta,
+  moduleStats,
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
@@ -85,7 +86,8 @@ const meta = moduleMeta('settlement')
 const columns = ["测点编号", "测点位置", "初始高程", "累计沉降", "沉降速率", "预警阈值", "监测日期", "测点状态"]
 const actions = ["提交监测", "发布预警", "确认稳定"]
 const statuses = ["正常", "预警", "报警", "已稳定"]
-const stats = [{"label": "正常测点", "value": 0}, {"label": "预警测点", "value": 0}, {"label": "最大累计沉降", "value": 0}]
+// 指标走共享实现：与建筑监测页读到的是同一套数据、同一个统计算法，不分两份。
+const stats = ref<{ label: string; value: number }[]>([])
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
@@ -128,6 +130,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    stats.value = moduleStats(meta.key)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '地表沉降列表读取失败'
   }

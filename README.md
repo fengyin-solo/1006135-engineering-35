@@ -7,16 +7,45 @@
 结果都持久化在浏览器 `localStorage` 里，刷新或重开浏览器都还在。dev server 已关掉自动打开页面，
 启动后按终端打印的地址手工打开。
 
+## 工程化约定（流水线必读）
+
+- **版本钉死**：`frontend/package-lock.json` 是唯一版本清单，依赖版本全部精确（无 `^`/`~`）；
+  本地 `make install`（`npm ci --cache .cache/npm-<提交号>`）与镜像 `Dockerfile` 里的 `npm ci`
+  都照这份清单取，不再出现「本地装的版本和镜像里不一样、构建过了起来报错」。改依赖后
+  `npm install` 更新锁清单并一并提交。
+- **缓存按提交重建**：npm 与 Vite 的缓存目录都带当前提交号（Makefile 的 `COMMIT_SHA`，
+  compose 通过 build arg 透传进镜像 `VITE_CACHE_DIR`），切提交即换目录，不串旧缓存。
+- **两条数据入口读同一套样例**：样例单一真源是 `frontend/src/data/seed-rows.json`，
+  Node 脚本与浏览器都读它，归一化/校验/联动的共享实现是 `frontend/src/data/kernel.js`。
+  - `make prepare`（`npm run prepare:samples`）：准备入口，把样例灌进发布制品
+    `public/data/prepared-samples.json`（`prebuild` 自动执行，构建必带样例）。按 id 幂等
+    upsert，重复执行不翻倍；`.data/prepare-journal.json` 记步骤，跑一半停了再跑只续未完成步。
+  - `make reset`（`npm run reset:samples`）：恢复入口，清进度与制品后按同一份样例重建初始状态。
+- **范围校验**：`距隧道距离/允许沉降/实测沉降` 与沉降四项的区间在共享内核里定义，准备阶段
+  越限即报错并以非零码退出；页面登记也走同一校验。
+- **存量兼容**：旧数据读取时就地迁移——id 统一成 number、缺字段照样例补、`createdAt` 按创建
+  先后回填、地表沉降按建筑对象补齐，记录只修不丢，不整块丢弃。
+- **同源同步**：地表沉降不单独维护样例，由建筑监测同源派生，建筑监测页与地表沉降页的条数
+  （`prepare` 也会校验一致）和指标数字都来自同一份数据与同一统计算法。
+- **登记事务**：同一对象编号重复提交只记一次；建筑记录与联动沉降测点在同一事务落库，
+  写库失败就地撤销内存与 `localStorage`，不留半截。
+
 ## 目录结构
 
 ```text
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端（唯一运行单元）
+│   ├── scripts/              prepare-samples / reset-samples 两个入口
+│   ├── public/data/          准备入口产出的样例制品（随 dist 发布）
 │   ├── src/views/            每个业务模块一个页面
-│   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出
+│   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出、登记事务
+│   ├── src/data/kernel.js    共享内核：归一化/范围校验/回填/沉降联动/指标（Node 与浏览器共用）
+│   ├── src/data/seed-rows.json    样例单一真源
 │   ├── src/data/             模块元数据 / 示例数据 / localStorage 持久化
 │   ├── src/stores/           会话与筛选状态
+│   ├── Dockerfile            node 钉版本构建 + nginx 静态托管
 │   └── vite.config.ts        dev server 配置（open: false，无 /api 代理）
+├── Makefile                  install/prepare/reset/build/image 入口（缓存按提交号隔离）
 ├── .gitignore
 └── docker-compose.yml
 ```
@@ -24,19 +53,31 @@
 ## 启动
 
 ```bash
+make install      # 按锁清单装依赖（等价 cd frontend && npm ci）
+make frontend     # 开发
+make build        # 先 prepare 灌样例再构建，dist 里自带样例
+make image        # 构建镜像（提交号透传，缓存按提交隔离）
+```
+
+或手工：
+
+```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 前端默认监听 `http://127.0.0.1:5173/`，dev server 不会自动打开浏览器，需要自己访问。
 
-生产构建：
+生产构建（先执行准备入口，制品含样例）：
 
 ```bash
 cd frontend
 npm run build
 ```
+
+镜像为多阶段构建：node 镜像里 `npm ci && npm run build`，最终用 nginx 托管 `dist`，
+compose 下访问端口仍是 `http://localhost:5173/`。
 
 ## 业务模块
 
@@ -68,4 +109,6 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `shield-tunnel-construction:entries` 这一项，或调用 `resetModule(模块)`。
+- 想回到初始数据：`make reset`（或 `cd frontend && npm run reset:samples`）恢复制品初始样例；
+  浏览器里可点建筑监测页「恢复初始样例」按钮，或清掉 `shield-tunnel-construction:entries`
+  这一项，也可调用 `resetModule(模块)`。
